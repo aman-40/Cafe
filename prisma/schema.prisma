@@ -1,0 +1,393 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+model User {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  role        Role     @default(ADMIN)
+  isActive    Boolean  @default(true)
+  position    String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shifts      StaffShift[]
+  activities  StaffActivity[]
+}
+
+enum ShiftStatus {
+  ACTIVE
+  COMPLETED
+}
+
+model StaffShift {
+  id        String      @id @default(uuid())
+  userId    String
+  startedAt DateTime    @default(now())
+  endedAt   DateTime?
+  status    ShiftStatus @default(ACTIVE)
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model StaffActivity {
+  id         String   @id @default(uuid())
+  userId     String
+  action     String
+  entityType String?
+  entityId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model CafeSettings {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  description  String?
+  logo         String?
+  coverImage   String?
+  phone        String?
+  email        String?
+  whatsapp     String?
+  address      String?
+  city         String?
+  state        String?
+  country      String?
+  latitude     Float?
+  longitude    Float?
+  openingHours Json?
+  socialLinks  Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model MenuCategory {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  image        String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items MenuItem[]
+}
+
+model MenuItem {
+  id           String   @id @default(uuid())
+  categoryId   String
+  name         String
+  slug         String   @unique
+  description  String?
+  price        Decimal  @db.Decimal(10, 2)
+  image        String?
+  isAvailable  Boolean  @default(true)
+  isFeatured   Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  category MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  orderItems OrderItem[]
+  ingredients MenuItemIngredient[]
+}
+
+model CafeTable {
+  id          String   @id @default(uuid())
+  tableNumber String   @unique
+  capacity    Int      @default(2)
+  qrCode      String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  orders      Order[]
+  reservations Reservation[]
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELLED
+  REJECTED
+  NO_SHOW
+}
+
+model Reservation {
+  id                String            @id @default(uuid())
+  reservationNumber String            @unique
+  tableId           String
+  customerName      String
+  customerPhone     String
+  customerEmail     String?
+  guestCount        Int
+  reservationDate   DateTime          @db.Date
+  startTime         String            // e.g. "19:00"
+  endTime           String            // e.g. "20:30"
+  status            ReservationStatus @default(PENDING)
+  specialRequest    String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  table             CafeTable         @relation(fields: [tableId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([reservationDate])
+  @@index([tableId])
+  @@index([customerPhone])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @unique
+  tableId       String?
+  status        OrderStatus @default(PENDING)
+  subtotal      Decimal     @db.Decimal(10, 2)
+  tax           Decimal     @default(0) @db.Decimal(10, 2)
+  discount      Decimal     @default(0) @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  customerName  String?
+  customerPhone String?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  table         CafeTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+  payments      Payment[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([tableId])
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String
+  provider          String
+  providerPaymentId String?       @unique
+  providerOrderId   String?       @unique
+  amount            Decimal       @db.Decimal(10, 2)
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  method            String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([method])
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  menuItemId  String?
+  name        String
+  price       Decimal  @db.Decimal(10, 2)
+  quantity    Int
+  subtotal    Decimal  @db.Decimal(10, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+model MenuItemIngredient {
+  id              String        @id @default(uuid())
+  menuItemId      String
+  inventoryItemId String
+  quantity        Decimal       @db.Decimal(10, 2)
+
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  @@unique([menuItemId, inventoryItemId])
+  @@index([menuItemId])
+  @@index([inventoryItemId])
+}
+
+enum UnitType {
+  GRAM
+  KILOGRAM
+  MILLILITER
+  LITER
+  PIECE
+  PACK
+  BOTTLE
+  OTHER
+}
+
+model InventoryItem {
+  id              String        @id @default(uuid())
+  name            String
+  sku             String?       @unique
+  unit            UnitType
+  currentStock    Decimal       @default(0) @db.Decimal(10, 2)
+  minimumStock    Decimal       @default(0) @db.Decimal(10, 2)
+  costPerUnit     Decimal       @default(0) @db.Decimal(10, 2)
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  transactions    InventoryTransaction[]
+  menuItemRecipes MenuItemIngredient[]
+}
+
+enum TransactionType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  WASTE
+  RETURN
+  INITIAL_STOCK
+}
+
+model InventoryTransaction {
+  id              String          @id @default(uuid())
+  inventoryItemId String
+  type            TransactionType
+  quantity        Decimal         @db.Decimal(10, 2)
+  previousStock   Decimal         @db.Decimal(10, 2)
+  newStock        Decimal         @db.Decimal(10, 2)
+  reason          String?
+  referenceId     String?         
+  createdAt       DateTime        @default(now())
+  createdBy       String?         
+
+  inventoryItem   InventoryItem   @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId])
+  @@index([referenceId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_CONFIRMED
+  ORDER_PREPARING
+  ORDER_READY
+  ORDER_COMPLETED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PAYMENT_REFUNDED
+  RESERVATION_CREATED
+  RESERVATION_CONFIRMED
+  RESERVATION_REJECTED
+  RESERVATION_SEATED
+  RESERVATION_COMPLETED
+  RESERVATION_CANCELLED
+  RESERVATION_NO_SHOW
+  RESERVATION_REMINDER
+  LOW_STOCK_ALERT
+  OUT_OF_STOCK_ALERT
+  STAFF_SHIFT_REMINDER
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+}
+
+model Notification {
+  id                String              @id @default(uuid())
+  type              NotificationType
+  channel           NotificationChannel
+  recipient         String
+  subject           String?
+  message           String              @db.Text
+  status            NotificationStatus  @default(PENDING)
+  provider          String?
+  providerMessageId String?
+  referenceType     String?
+  referenceId       String?
+  attempts          Int                 @default(0)
+  lastAttemptAt     DateTime?
+  sentAt            DateTime?
+  errorMessage      String?             @db.Text
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([type])
+  @@index([channel])
+  @@index([referenceType, referenceId])
+}
+
+model NotificationSettings {
+  id                String   @id @default("default")
+  orderEmail        Boolean  @default(true)
+  orderWhatsapp     Boolean  @default(false)
+  paymentEmail      Boolean  @default(true)
+  paymentWhatsapp   Boolean  @default(false)
+  reservationEmail  Boolean  @default(true)
+  reservationWhatsapp Boolean @default(false)
+  reservationReminder Boolean @default(true)
+  inventoryAlerts   Boolean  @default(true)
+  staffAlerts       Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
